@@ -24,4 +24,5 @@ export default function () {
     'estado es 200': (r) => r.status === 200,
     'responde con instancia': (r) => r.json('instancia') !== undefined,
   });
-  sleep(0.1);}
+  sleep(0.1);
+}
