@@ -75,7 +75,6 @@ services:
       - monitor_net
 
   prometheus:
-    # Fije la version que usa: docker exec prometheus prometheus --version
     image: prom/prometheus:latest
     container_name: prometheus
     restart: unless-stopped
