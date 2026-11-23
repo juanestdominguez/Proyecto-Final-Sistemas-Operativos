@@ -1,0 +1,120 @@
+# Infraestructura containerizada: Nginx (proxy inverso) + 3 backends + monitoreo
+# Levantar:  docker compose up -d --build
+
+x-backend: &backend
+  build: ./backend
+  restart: unless-stopped
+  networks:
+    - monitor_net
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)"]
+    interval: 10s
+    timeout: 3s
+    retries: 5
+    start_period: 5s
+
+services:
+  backend1:
+    <<: *backend
+    container_name: backend1
+    environment:
+      - INSTANCE_ID=Backend-Instancia-1
+
+  backend2:
+    <<: *backend
+    container_name: backend2
+    environment:
+      - INSTANCE_ID=Backend-Instancia-2
+
+  backend3:
+    <<: *backend
+    container_name: backend3
+    environment:
+      - INSTANCE_ID=Backend-Instancia-3
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      backend1:
+        condition: service_healthy
+      backend2:
+        condition: service_healthy
+      backend3:
+        condition: service_healthy
+    networks:
+      - monitor_net
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.1.0
+    container_name: nginx-exporter
+    restart: unless-stopped
+    command:
+      - '-nginx.scrape-uri=http://nginx:8080/stub_status'
+    depends_on:
+      - nginx
+    networks:
+      - monitor_net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitor_net
+
+  prometheus:
+    # Fije la version que usa: docker exec prometheus prometheus --version
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+      - nginx-exporter
+      - cadvisor
+    networks:
+      - monitor_net
+
+  grafana:
+    image: grafana/grafana:13.3.1
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - monitor_net
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  monitor_net:
+    driver: bridge

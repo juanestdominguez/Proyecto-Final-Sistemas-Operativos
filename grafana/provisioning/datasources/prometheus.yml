@@ -1,0 +1,10 @@
+apiVersion: 1
+
+datasources:
+  - name: prometheus
+    uid: dg4zwh8a2kr28e        # mismo UID que usa el dashboard
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
